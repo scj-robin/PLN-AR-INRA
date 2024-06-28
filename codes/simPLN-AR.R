@@ -5,26 +5,19 @@ seed <- 1; set.seed(seed)
 library(mvtnorm)
 source('functions/functionsPLN-AR.R')
 
-# Dims
+# Dims & parms
 n <- 100; p <- 5; d <- 3
-
-# Parms
-Gamma <- solve(exp(-as.matrix(dist(matrix(rnorm(2*p), p, 2)))))
-Psi <- solve(exp(-as.matrix(dist(matrix(rnorm(2*p), p, 2)))))
-A <- matrix(rnorm(p^2), p, p)/10
-Beta <- matrix(rnorm(p*d), d, p); Beta[1, ] <- Beta[1, ] + 5
-Sigma <- StatVarAR(A=A, Psi=Psi)
-true <- list(Gamma=Gamma, Psi=Psi, A=A, Beta=Beta, Sigma=Sigma)
+true <- SimParmsPLNAR(n=n, p=p)
 
 # Data
 X <- matrix(rnorm(n*d), n, d); X[, 1] <- 1
-sim <- SimPLNAR(X=X, Gamma=Gamma, A=A, Psi=Psi, Beta=Beta)
+sim <- SimPLNAR(X=X, parms=true)
 data <- list(X=X, Y=sim$Y)
 
 # Fake Estep
-S <- diag(n)%x%Sigma
-S <- S + rbind(rep(0, n), cbind(diag(n-1), rep(0, n-1))) %x% (Sigma%*%t(A))
-S <- S + cbind(rep(0, n), rbind(diag(n-1), 0)) %x% (A%*%Sigma)
+S <- diag(n)%x%true$Sigma
+S <- S + rbind(rep(0, n), cbind(diag(n-1), rep(0, n-1))) %x% (true$Sigma%*%t(true$A))
+S <- S + cbind(rep(0, n), rbind(diag(n-1), 0)) %x% (true$A%*%true$Sigma)
 # image(1:(n*p), 1:(n*p), S)
 eStep <- list(m=rep(0, n*p), S=S)
 eStep$M <- (matrix(eStep$m, n, p, byrow=TRUE))
