@@ -9,11 +9,14 @@ load('toydata.RData'); y <- as.matrix(toydata[, -c(1:3)])
 
 yLog <- log(y)
 n <- nrow(y); p <- ncol(y)
-par(mfrow=c(3, 2))
+par(mfrow=c(2, 2))
 hist(y, breaks=prod(dim(y)))
 hist(yLog, breaks=prod(dim(y)))
+matplot(y, type='l')
+matplot(yLog, type='l')
 
 # Multivariate AR
+par(mfrow=c(2, 2))
 fit <- lm(yLog[-1, ] ~ yLog[-n, ])
 resid <- fit$residuals
 coef <- fit$coefficient

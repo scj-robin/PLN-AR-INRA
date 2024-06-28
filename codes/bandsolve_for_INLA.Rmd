@@ -1,0 +1,64 @@
+---
+title: "Bandsolve for INLA"
+author: "G. Nuel"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+#header-includes:
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+    toc: false
+  word_document: default
+#bibliography: biblio_AD.bib
+#biblio-style: apalike
+editor_options: 
+  chunk_output_type: console
+---
+
+The package $\texttt{bandsolve}$ to solve efficiently $Ax=b$ where $A$ is a symmetric band matrix. Complexity in $\mathcal{O}(n L)$ where $L$ is the number of bands. Also usable to obtain the inverse of $A$ (by solving with $b$ base vectors).
+
+```{r message=FALSE}
+#install.packages("remotes")
+#remotes::install_github("Monneret/bandsolve")
+require(bandsolve)
+n=20
+A=matrix(0,n,2)
+A[,1]=3.0; A[-n,2]=-1.0
+b=rep(1.0,n)
+x=bandsolve(A,b)
+norm(rot2mat(A)%*%x-b)
+
+#bandsolve_cpp(A,as.matrix(b))
+
+```
+
+When there is only one band off diagonal, the determinant of $A$ can also be computed efficiently using the recursion:
+$$
+D_i=A[i,1]\times  D_{i+1}-A[i,2]^2 \times D_{i+2}
+$$
+where $D_i=\det(A[i:n,i:n])$. Log-scale implementation possible.
+
+The log of the determinant is also easy to obtain:
+
+```{r}
+
+# log determinant
+A=matrix(0,n,3)
+A[,1]=3.0; A[-n,2]=-1.0; A[1:(n-2),3]=+1.0
+
+bandlogdet=function(A) {
+  # copy matrix to avoid in-place computation
+  Amem=matrix(NA,nrow(A),ncol(A))
+  Amem[]=A[]
+  # call LDL
+  invisible(LDL(Amem))
+  # return res
+  return(sum(log(Amem[,1])))
+}
+
+c(log(det(rot2mat(A))),bandlogdet(A))
+```
+
+
+
