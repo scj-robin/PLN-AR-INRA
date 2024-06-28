@@ -2,7 +2,7 @@ rm(list=ls())
 library(fields)
 
 # Data: Ozone
-load('toydata.RData'); y <- as.matrix(toydata[, -c(1:3)])
+load('data/pollution/toydata.RData'); y <- as.matrix(toydata[, -c(1:3)])
 
 # Data: PM2.5
 # load('PM2.5_24h_28city_5times.rda'); y <- as.matrix(Y)
@@ -14,7 +14,8 @@ hist(y, breaks=prod(dim(y)))
 hist(yLog, breaks=prod(dim(y)))
 
 # Multivariate AR
-fit <- lm(yLog[-1, ] ~ yLog[-n, ])
+# fit <- lm(yLog[-1, ] ~ yLog[-n, ])
+fit <- lm(yLog[seq(2,n,4), ] ~ yLog[seq(1,n-1,4), ])
 resid <- fit$residuals
 coef <- fit$coefficient
 # Coef
