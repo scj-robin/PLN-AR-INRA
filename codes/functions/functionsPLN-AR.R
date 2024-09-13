@@ -118,7 +118,8 @@ ElboPLNAR_INLA <- function(data, eStep, mStep){
   O <- eStep$M + matrix(diag(eStep$S), n, p, byrow=TRUE)/2
   condExpCompLogLik <- condExpCompLogLik - sum(exp(data$X%*%mStep$Beta + O)) +
     sum((data$X%*%mStep$Beta + eStep$M)*data$Y) - sum(data$logFactY)
-  
+  elbo <- condExpCompLogLik + 0.5*(n*p*(1+log(2*acos(-1))) + LogDetSR(eStep$S))
+  return(elbo)
 }
 LogLikPLNAR_INLA <- function(data, eStep, mStep){
   ObjPLNARINLA_Z(vecZ=as.vector(t(eStep$M)), data=data, mStep=mStep) + 

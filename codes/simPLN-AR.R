@@ -62,14 +62,19 @@ mStep$Gamma <- mStep$Psi <- cov(init$residuals)
 par(mfrow=c(1, 1))
 tol <- 1e-4; iterMax <- 100
 diff <- 2*tol; iter <- 0
-elboPath <- rep(NA, 2*iterMax)
+elboPath <- logLikPath <- rep(NA, 3*iterMax)
 while((diff > tol) & (iter < iterMax)){
   iter <- iter+1
   eStepNew <- VEstepPLNAR_INLA(data=data, mStep=mStep)
-  elboPath[2*iter-1] <- ElboPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStep)
+  if(iter==1){eStep <- eStepNew}
+  elboPath[3*iter-2] <- ElboPLNAR_INLA(data=data, eStep=eStep, mStep=mStep)
+  elboPath[3*iter-1] <- ElboPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStep)
+  logLikPath[3*iter-2] <- LogLikPLNAR_INLA(data=data, eStep=eStep, mStep=mStep)
+  logLikPath[3*iter-1] <- LogLikPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStep)
   cat('iter ', iter, ': Estep=', elboPath[2*iter-1])
   mStepNew <- MstepPLNAR(data=data, eStep=eStepNew)
-  elboPath[2*iter] <- ElboPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStepNew)
+  elboPath[3*iter] <- ElboPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStepNew)
+  logLikPath[3*iter] <- LogLikPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStepNew)
   cat(' Mstep=', iter, elboPath[2*iter], '\n')
   # Test
   if(iter > 1){diff <- max(abs(eStep$M - eStepNew$M))}
@@ -85,6 +90,10 @@ while((diff > tol) & (iter < iterMax)){
       ElboPLNAR_INLA(data=data, eStep=eStepNew, mStep=mStepNew), '\n')
   # Update
   eStep <- eStepNew; mStep <- mStepNew
-  plot(elboPath[1:(2*iter)], type='b', col=rep(1:2, iterMax), xlab='2*iter')
+  par(mfrow=c(2, 2))
+  plot(elboPath[1:(3*iter)], type='b', col=rep(1:3, iterMax), xlab='3*iter')
+  plot(c(NA, diff(elboPath[1:(3*iter)])), type='b', col=rep(1:3, iterMax), xlab='3*iter'); abline(h=0)
+  plot(logLikPath[1:(3*iter)], type='b', col=rep(1:3, iterMax), xlab='3*iter')
+  plot(c(NA, diff(logLikPath[1:(3*iter)])), type='b', col=rep(1:3, iterMax), xlab='3*iter'); abline(h=0)
 }
 
