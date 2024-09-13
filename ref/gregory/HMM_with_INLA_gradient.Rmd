@@ -1,0 +1,285 @@
+---
+title: "HMM with INLA"
+author: "G. Nuel"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+#header-includes:
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+    toc: false
+  word_document: default
+#bibliography: biblio_AD.bib
+#biblio-style: apalike
+editor_options: 
+  chunk_output_type: console
+---
+
+# bandlinear systems
+
+The package $\texttt{bandsolve}$ to solve efficiently $Ax=b$ where $A$ is a symmetric band matrix. Complexity in $\mathcal{O}(n L)$ where $L$ is the number of bands. Also usable to obtain the inverse of $A$ (by solving with $b$ base vectors).
+
+```{r message=FALSE}
+#install.packages("remotes")
+#remotes::install_github("Monneret/bandsolve")
+require(bandsolve)
+n=20
+A=matrix(0,n,2)
+A[,1]=3.0; A[-n,2]=-1.0
+b=rep(1.0,n)
+x=bandsolve(A,b)
+norm(rot2mat(A)%*%x-b)
+
+#bandsolve_cpp(A,as.matrix(b))
+
+```
+
+When there is only one band off diagonal, the determinant of $A$ can also be computed efficiently using the recursion:
+$$
+D_i=A[i,1]\times  D_{i+1}-A[i,2]^2 \times D_{i+2}
+$$
+where $D_i=\det(A[i:n,i:n])$. Log-scale implementation possible.
+
+```{r}
+
+# log determinant
+A=matrix(0,n,3)
+A[,1]=3.0; A[-n,2]=-1.0; A[1:(n-2),3]=+1.0
+
+bandlogdet=function(A) {
+  # copy matrix to avoid in-place computation
+  Amem=matrix(NA,nrow(A),ncol(A))
+  Amem[]=A[]
+  # call LDL
+  invisible(LDL(Amem))
+  # return res
+  return(sum(log(Amem[,1])))
+}
+
+c(log(det(rot2mat(A))),bandlogdet(A))
+```
+
+
+
+# Gaussian order 1 random walk
+
+## Model
+
+$$
+\mathbb{P}(X_1=x_1)\propto 1
+\quad
+\mathbb{P}(X_i=x_i|X_{i-1}=x_{i-1})=\texttt{dnorm}(x_i,x_{i-1},\sigma)
+\quad
+\mathbb{P}(Y_i=y_i | X_i=x_i)=\texttt{dnorm}(y_i,x_{i},\varepsilon)
+$$
+
+## Derivatives
+
+$$
+f(x|y,\theta)=\log \texttt{dnorm}(x_1) + \sum_{i=2}^n \log \texttt{dnorm}(x_i,x_{i-1},\sigma) + \sum_{i=1}^n \texttt{dnorm}(y_i,x_{i},\varepsilon)
+$$
+$$
+\mathrm{grad}f(x | y,\theta)=\left(
+-x_1 + \frac{(x_2-x_1)}{\sigma^2} + \frac{(y_1-x_1)}{\varepsilon^2} ;
+\frac{(x_i-x_{i-1})}{\sigma^2} + \mathbf{1}_{i<n} \frac{(x_{i+1}-x_{i})}{\sigma^2} + \frac{(y_i-x_i)}{\varepsilon^2}
+\quad i=2,\ldots,n
+\right)^T
+$$
+$$
+\mathrm{Hess}f(x|y,\theta)=\mathrm{band}(A)
+$$
+$$
+A[,1]=\left(
+-1-\frac{1}{\sigma^2}-\frac{1}{\varepsilon^2} ;
+-\frac{1}{\sigma^2}-\mathbf{1}_{i<n}\frac{1}{\sigma^2}-\frac{1}{\varepsilon^2}\quad i=2,\ldots,n
+\right)^T
+\quad
+A[,2]=\left(
+\frac{1}{\sigma^2} \quad i=1,\ldots,n-1 ;
+0
+\right)^T
+$$
+
+## Newton-Raphson for MAP
+
+$$
+\widehat{x}^\theta = \arg \max_x f(x | y,\theta)
+$$
+$$
+x^{(0)}=0 \quad \text{iter}=1\ldots,N: x^{(\text{iter})}=x^{(\text{iter}-1)} - \mathrm{Hess}f\left(x^{(\text{iter}-1)}|y,\theta\right)^{-1} \mathrm{grad}f\left(x^{(\text{iter}-1)}|y,\theta\right)
+$$
+
+## Laplace approximation
+
+$$
+\log \mathbb{P}(y | \theta) \simeq \text{cst.} + \log \mathbb{P}\left(
+\widehat{x}^\theta,y|\theta \right)
+- \frac{1}{2} \log \det \left(
+-\mathrm{Hess}f\left(\widehat{x}^{\theta}|y,\theta\right)
+\right)
+$$
+
+## Gaussian posterior of $x$
+
+$$
+\mathbb{P}\left(x | y,\theta\right) = \texttt{dmvnorm}\left(
+\widehat{x}^{\theta},\left(
+-\mathrm{Hess}f\left(\widehat{x}^{\theta}|y,\theta\right)
+\right)^{-1}
+\right)
+$$
+
+## Implementation
+
+```{r eval=TRUE,echo=FALSE,fig.cap="simulation of a order 1 Gaussian random walk"}
+n=500
+eps=2.0
+sigma=0.5
+theta_star=log(c(eps,sigma))
+theta=theta_star
+
+set.seed(42)
+
+x=y=rep(NA,n)
+#x[1]=rnorm(1)
+x[1]=7.0
+for (i in 2:n)
+  x[i]=rnorm(1,x[i-1],sigma)
+y=rnorm(n,x,eps)
+
+x_star=x
+
+plot(x_star,t='l',ylim=range(y),xlab="i",ylab="",lwd=2)
+points(y,cex=0.2)
+legend("topright",c("hidden state","observations"),pch=c(NA,1),lty=c(1,NA),lwd=c(2,1),bg="white")
+
+#plot(y,cex=0.2)
+```
+
+
+```{r echo=FALSE,fig.cap="posterior hidden path with MLE parameters"}
+f=function(x,theta) {
+  eps=exp(theta[1])
+  sigma=exp(theta[2])
+  #dnorm(x[1],log=TRUE)+sum(dnorm(x[-1],x[-n],sigma,log=TRUE))+sum(dnorm(y,x,eps,log=TRUE))
+  sum(dnorm(x[-1],x[-n],sigma,log=TRUE))+sum(dnorm(y,x,eps,log=TRUE))
+}
+
+grad=function(x,theta) {
+  eps=exp(theta[1])
+  sigma=exp(theta[2])
+  # grad
+  b=(y-x)/eps^2
+  i=1:n
+  b[i[-1]]=b[i[-1]]-diff(x)/sigma^2
+  b[i[-n]]=b[i[-n]]+diff(x)/sigma^2
+  return(b)
+}
+# verif
+# i=42
+# h=rep(0,n); h[i]=1e-5;
+# c(
+#   (f(x+h,theta)-f(x,theta))/1e-5,
+#    grad(x,theta)[i]
+# )
+
+Hessian=function(theta) {
+  eps=exp(theta[1])
+  sigma=exp(theta[2])
+  # Hessian
+  A=matrix(0.0,n,2)
+  i=1:n
+  A[,1]=-1/eps^2
+  A[i[-1],1]=A[i[-1],1]-1/sigma^2
+  A[i[-n],1]=A[i[-n],1]-1/sigma^2
+  A[-n,2]=1/sigma^2
+  return(A)
+}
+# verif
+# i=1
+# h=rep(0,n); h[i]=1e-5;
+# aux=(grad(x+h,theta)-grad(x,theta))/1e-5
+# aux[aux!=0]
+# Hessian(theta)[i,]
+
+
+xhat=function(theta,itermax=50,tol=1e-5) {
+  # parameters
+  # Newton-Raphson loop
+  x=rep(1.0,n)
+  for (iter in 1:itermax) {
+    delta=bandsolve(Hessian(theta),grad(x,theta))
+    x=x-delta
+    if (max(abs(delta)/abs(x))<tol) break
+  }
+  return(x)
+}
+
+loglik=function(theta) {
+  x=xhat(theta)
+  A=Hessian(theta)
+  f(x,theta)-1/2*bandlogdet(-A)
+}
+
+# finding MLE
+opt=optim(par=theta_star,fn=function(theta){-loglik(theta)})
+rbind(opt$par,theta_star)
+
+x=xhat(opt$par)
+sd=sqrt(diag(bandsolve(-Hessian(opt$par))))
+
+plot(x_star,t='l',ylim=range(y),xlab="i",ylab="",lwd=2)
+points(y,cex=0.2)
+legend("topright",c("hidden state","observations","estimation"),pch=c(NA,1,NA),lty=c(1,NA,1),lwd=c(2,1,2),col=c("black","black","blue"),bg="white")
+points(x,t='l',col="blue",lwd=2)
+polygon(c(1:n,n:1),c(x-1.96*sd,rev(x+1.96*sd)),col=rgb(0,0,1,alpha=0.30),border=FALSE)
+```
+
+# derivative of the MAP
+
+The objective is to compute the gradient of $\widehat{x}^\theta$ with respect with $\theta$.The basic idea is that whe can obtain a good approximation of $\widehat{x}^{\theta+h}$ from $\widehat{x}^\theta$ with just one Newton-Raphson step:
+
+$$
+\widehat{x}^{\theta+h} \simeq \hat{x}^\theta
+- \mathrm{Hess}f\left(\widehat{x}^\theta|y,\theta+h\right)^{-1}
+\mathrm{grad}f\left(\widehat{x}^\theta|y,\theta+h\right)
+$$
+
+The second idea is to assume that the Hessian can be computed in $\theta$ instead of $\theta+h$ since it is not changing a lot if $h$ is small. We denote with $\nabla$ the gradient with respect with $\theta$ and we obtain the following approximation:
+
+$$
+\nabla\widehat{x}^{\theta} \simeq
+- \mathrm{Hess}f\left(\widehat{x}^\theta|y,\theta\right)^{-1}
+\nabla \mathrm{grad}f\left(\widehat{x}^\theta|y,\theta\right)
+$$
+
+NB: we have a closed form formulat for the $\nabla$ of the gradient so it is easy.
+
+```{r}
+theta=opt$par
+
+h=1e-5
+thetah1=theta+c(h,0)
+thetah2=theta+c(0,h)
+x1=xhat(thetah1)
+x2=xhat(thetah2)
+
+ggrad=function(x,theta) {
+  eps=exp(theta[1])
+  sigma=exp(theta[2])
+  # grad
+  b1=(y-x)/eps^2
+  b2=rep(0,n)
+  i=1:n
+  b2[i[-1]]=b2[i[-1]]-diff(x)/sigma^2
+  b2[i[-n]]=b2[i[-n]]+diff(x)/sigma^2
+  return(-2*cbind(b1,b2))
+}
+
+ref=cbind((x1-x)/h,(x2-x)/h)
+res=-bandsolve(Hessian(theta),ggrad(x,theta))
+
+plot(c(ref),c(res),cex=0.5); abline(0,1,col="blue")
+```
+
