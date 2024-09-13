@@ -39,7 +39,6 @@ SimParmsPLNAR <- function(n, p){
   Sigma <- StatVarAR(parms=list(A=A, Psi=Psi))
   return(list(Gamma=Gamma, Psi=Psi, A=A, Beta=Beta, Sigma=Sigma))
 }
-
 SimPLNAR <- function(X, parms){
   # Simulate PLN-AR data
   n <- nrow(X); p <- nrow(parms$Gamma)
@@ -105,6 +104,22 @@ HessPLNARINLA_Z <- function(vecZ, data, mStep){
 
 ################################################################################
 # VEM
+ElboPLNAR_INLA <- function(data, eStep, mStep){
+  n <- nrow(data$Y); p <- ncol(data$Y)
+  # Expectation of the complete log-likelihood
+  condExpCompLogLik <- -n*p/2*log(2*acos(-1)) + 0.5*(LogDetSR(mStep$Gamma) + (n-1)*LogDetSR(mStep$Psi))
+  condExpCompLogLik <- condExpCompLogLik + sum(diag((tcrossprod(eStep$M[1, ])+eStep$S[1:p, 1:p])%*%mStep$Gamma))
+  for(t in 2:n){
+    C <- eStep$S[(t-1)*p+(1:p), (t-1)*p+(1:p)] + mStep$A%*%eStep$S[(t-2)*p+(1:p), (t-2)*p+(1:p)] -
+      eStep$S[(t-1)*p+(1:p), (t-2)*p+(1:p)]%*%t(mStep$A) - mStep$A%*%eStep$S[(t-2)*p+(1:p), (t-1)*p+(1:p)]
+    condExpCompLogLik <- condExpCompLogLik + 
+      0.5*(sum(diag((tcrossprod(eStep$M[t, ] - mStep$A%*%eStep$M[t-1, ]) + C)%*%mStep$Psi)))
+  }
+  O <- eStep$M + matrix(diag(eStep$S), n, p, byrow=TRUE)/2
+  condExpCompLogLik <- condExpCompLogLik - sum(exp(data$X%*%mStep$Beta + O)) +
+    sum((data$X%*%mStep$Beta + eStep$M)*data$Y) - sum(data$logFactY)
+  
+}
 LogLikPLNAR_INLA <- function(data, eStep, mStep){
   ObjPLNARINLA_Z(vecZ=as.vector(t(eStep$M)), data=data, mStep=mStep) + 
     prod(dim(data$Y))*log(2*acos(-1))/2 - 0.5*LogDetSR(eStep$invS)
@@ -125,6 +140,8 @@ MstepPLNAR <- function(data, eStep){
   Beta <- sapply(1:p, function(j){
     glm(data$Y[, j] ~ -1 + data$X + offset(O[, j]), family=poisson)$coefficients
     })
+  # Patch for Gamma
+  # Gamma <- StatVarAR(parms=list(A=A, Psi=Psi))
   return(list(Gamma=Gamma, A=A, Psi=Psi, O=O, Beta=Beta))
 }
 VEstepPLNAR_INLA <- function(data, mStep){
